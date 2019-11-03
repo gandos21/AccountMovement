@@ -1,0 +1,3 @@
+echo Compiling Py script to EXE...
+pyinstaller --onefile AcMovement.py
+pause
