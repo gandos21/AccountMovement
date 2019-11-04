@@ -121,14 +121,12 @@ def IsFloatValueZero(floatValue):
 
 # Function to create the amount movement output xlsx file with required formatting
 def Create_Movement_Report(cwd, dataFrame):
-    # Remove the Cleared column from dataframe, before writing it to XLSX. We don't want this column to appear in the output
-    df2 = dataFrame.drop('Cleared', 1)      # Deleting a data column. Ref: https://stackoverflow.com/a/18145399/7251433
     fileName = cwd + fileNamePrefix + '_Account_Movement.xlsx'     # Output file name
     try:
         with pd.ExcelWriter(fileName, engine='xlsxwriter', date_format='d/mm/yyyy') as writer:      # d/mm/yyyy means single digit day is possible as opposed to dd/mm/yyyy
             workbook = writer.book
             sheetName = 'Account movement'
-            df2.to_excel(writer, sheetName, index=False, startrow=2, header=False)
+            dataFrame.to_excel(writer, sheetName, index=False, startrow=2, header=False)
             # Startrow=2 means row 3 in Excel, header=False to use own header formatting, instead of Pandas default header format. Ref: https://xlsxwriter.readthedocs.io/example_pandas_header_format.html
             worksheet = writer.sheets[sheetName]
             amountFormat = workbook.add_format({'num_format': '$###,###,##0.00'})
@@ -136,6 +134,7 @@ def Create_Movement_Report(cwd, dataFrame):
             worksheet.set_column('A:A', 18.43, centreAlignFormat)
             worksheet.set_column('B:B', 19.29, amountFormat)
             worksheet.set_column('C:C', 19.29, amountFormat)
+            worksheet.set_column('D:D', 15.86)
 
             # Add row header formats
             header_format_centre_aligned_green = workbook.add_format({
@@ -161,16 +160,20 @@ def Create_Movement_Report(cwd, dataFrame):
 
             # Write the column headers with the defined format.  Using our own header formatting. Ref: https://xlsxwriter.readthedocs.io/example_pandas_header_format.html
             rowNum = 1
-            for col_num, value in enumerate(df2.columns.values):
+            for col_num, value in enumerate(dataFrame.columns.values):
                 if col_num == 0 or col_num == 1:    # Specific formatting for 'contract number' and 'movement total'
                     worksheet.write(rowNum, col_num, value, header_format_centre_aligned_green)
-                else:   # 'Absolute Amount' column
+                elif col_num == 2:   # 'Absolute Amount'
                     worksheet.write(rowNum, col_num, value, header_format_centre_aligned_blue)
+                else:   # 'Cleared' column
+                    worksheet.write(rowNum, col_num, 'Comment', header_format_centre_aligned_blue)  # Using title 'Comment' instead of 'Cleared'
             worksheet.set_row(rowNum, 24.75)             # Set row height for the header row
 
             # Cell shading formats for items that are not cleared
             uncleared_ContractNo = workbook.add_format({'bg_color': '#F4B084', 'align': 'center'})  # F4B084 is Terracotta shade
             uncleared_Amount = workbook.add_format({'bg_color': '#F4B084', 'num_format': '$###,###,##0.00'})
+            uncleared_Comment = workbook.add_format({'bg_color': '#F4B084'})
+            cleared_Comment = workbook.add_format({'bg_color': '#C4D79B'})      # C4D79B is Light green shade for cleared comments
 
             # Re-write data with required cell colour shading for items that are not cleared
             rowOffset = 2
@@ -178,21 +181,34 @@ def Create_Movement_Report(cwd, dataFrame):
                 if dataFrame.at[rowIdx, 'Cleared'] == 'No':  # Check if item is uncleared
                     for colIdx, cellValue in enumerate(row):
                         if colIdx == 0:                     # 'contract number' column
-                            worksheet.write(rowIdx+rowOffset, colIdx, cellValue, uncleared_ContractNo)      # Write() function Ref: https://xlsxwriter.readthedocs.io/worksheet.html
+                            worksheet.write(rowIdx+rowOffset, colIdx, cellValue, uncleared_ContractNo)  # Write() function Ref: https://xlsxwriter.readthedocs.io/worksheet.html
                         elif colIdx == 1 or colIdx == 2:    # 'movement total' and 'Absolute Amount'
                             worksheet.write(rowIdx+rowOffset, colIdx, cellValue, uncleared_Amount)
-                        else:   # Ignore the 'Cleared' column data
-                            pass
+                        else:   # 'Cleared' column data
+                            worksheet.write(rowIdx+rowOffset, colIdx, 'Unmatched', uncleared_Comment)   # Replacing 'No' with 'Unmatched'
+                else:   # Cleared item - green shade the Comment data
+                    for colIdx, cellValue in enumerate(row):
+                        if colIdx == 3:     # 'Cleared' column
+                            worksheet.write(rowIdx+rowOffset, colIdx, 'Ok', cleared_Comment)            # Instead of using 'Yes', we are using 'Ok' for the comment
 
             # Activate autofilter on the header. Ref: https://xlsxwriter.readthedocs.io/example_autofilter.html
-            worksheet.autofilter('A2:C2')
+            worksheet.autofilter('A2:D2')
             # Freeze pane on 2nd row
             worksheet.freeze_panes(2, 0)
+            # Check if any unmatched items exist and apply filter for them, so the filtered data is visible when xlsx file is opened
+            if 'No' in list(dataFrame['Cleared']):      # Converting pandas data column to a list. Ref: https://stackoverflow.com/a/22341390/7251433
+                # Below code is taken from https://xlsxwriter.readthedocs.io/working_with_autofilters.html
+                worksheet.filter_column(3, 'Comment == Unmatched')      # Apply the filter criteria to column D
+                # Even after setting the filter criteria above, we still need to parse each row and filter-hide that do not meet filter criteria
+                rowOffset = 2
+                for rowIdx, row_data in dataFrame.iterrows():
+                    if row_data[3] != 'No':
+                        worksheet.set_row(rowIdx+rowOffset, options={'hidden': True})    # Hide rows that are cleared
 
     except Exception as ex:  # Generic exception reporting (to find out where the error occurred). Ref: https://stackoverflow.com/a/9824050/7251433
-        template = '\tAn exception of type {0} occurred. Arguments:\n{1!r}'
-        message = template.format(type(ex).__name__, ex.args)
-        print(message)
+        # template = '\tAn exception of type {0} occurred. Arguments:\n{1!r}'
+        # message = template.format(type(ex).__name__, ex.args)
+        # print(message)
         print(f'\tWrite to file \'{fileName}\' denied. Close the file and re-run script')
         sys.exit(2)
     return
