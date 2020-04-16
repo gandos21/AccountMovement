@@ -22,7 +22,7 @@ callCntr = 0
 def main(argv):
     ## Check tool permission
     currentUser = os.getlogin().lower()     # Get current Windows username and convert it to all lower case
-    if currentUser == 'suyogar' or currentUser == 'sutha75':  # Allow these Windows users unrestricted access to this tool
+    if currentUser == 'suyogar' or currentUser == 'sutha':  # Allow these Windows users unrestricted access to this tool
         print('Account Movement macro run by', currentUser)
     else:
         sys.exit(1)  # 1 = Permission error, set by GY.
